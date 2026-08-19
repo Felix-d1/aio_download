@@ -16,7 +16,11 @@ WORKDIR /usr/src/app
 COPY package*.json ./
 
 # Cài đặt các thư viện (bao gồm node-cache và express-rate-limit)
-RUN npm ci --only=production
+# Đổi dòng cũ:
+# RUN npm ci --only=production
+
+# Thành dòng mới:
+RUN npm install --only=production
 
 # Sao chép toàn bộ mã nguồn vào Container
 COPY . .
