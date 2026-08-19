@@ -22,10 +22,10 @@ const app = express();
 // CẤU HÌNH BẢO VỆ & TỐI ƯU HIỆU NĂNG
 // ------------------------------------------------------------------
 
-// 1. Lưu Cache kết quả bóc link trong 10 phút (600 giây) để tránh quá tải
+// 1. Lưu Cache kết quả bóc link trong 10 phút (600 giây)
 const apiCache = new NodeCache({ stdTTL: 600, checkperiod: 120 });
 
-// 2. Chống Spam / DDOS (Chỉ cho phép tối đa 30 request bóc link / 1 phút mỗi IP)
+// 2. Chống Spam / DDOS (Tối đa 30 request / 1 phút)
 const parseLimiter = rateLimit({
     windowMs: 1 * 60 * 1000, 
     max: 30,
@@ -48,7 +48,6 @@ async function initBrowser() {
         try {
             browser = await puppeteer.launch({
                 headless: 'new',
-                // Tự động sử dụng đường dẫn Chrome hệ thống nếu chạy trong Docker
                 executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || null,
                 args: [
                     '--no-sandbox',
@@ -58,9 +57,9 @@ async function initBrowser() {
                     '--disable-gpu',
                     '--no-first-run',
                     '--no-zygote',
-                    '--single-process', // Giảm chiếm dụng bộ nhớ RAM
+                    '--single-process',
                     '--disable-extensions',
-                    '--blink-settings=imagesEnabled=false' // Không tải hình ảnh khi crawl
+                    '--blink-settings=imagesEnabled=false'
                 ]
             });
             console.log('✅ Trình duyệt Puppeteer đã sẵn sàng.');
@@ -81,7 +80,7 @@ app.post('/api/parse', parseLimiter, async (req, res) => {
             return res.status(400).json({ success: false, error: 'Vui lòng cung cấp URL!' });
         }
 
-        // Trích xuất liên kết HTTP/HTTPS từ đoạn văn bản người dùng dán vào
+        // Trích xuất liên kết HTTP/HTTPS chuẩn xác từ văn bản người dùng dán vào
         const matchUrl = url.match(/(https?:\/\/[^\s]+)/);
         if (matchUrl) {
             url = matchUrl[0];
@@ -89,7 +88,7 @@ app.post('/api/parse', parseLimiter, async (req, res) => {
             return res.status(400).json({ success: false, error: 'Đường dẫn không hợp lệ!' });
         }
 
-        // 🌟 KIỂM TRA CACHE TRƯỚC KHI BÓC LINK (Tốc độ instant 0.01s)
+        // 🌟 KIỂM TRA CACHE TRƯỚC KHI BÓC LINK
         const cacheKey = `parse_${url}`;
         const cachedData = apiCache.get(cacheKey);
         if (cachedData) {
@@ -99,18 +98,19 @@ app.post('/api/parse', parseLimiter, async (req, res) => {
 
         let rawResult = null;
         const currentBrowser = await initBrowser();
+        const lowerUrl = url.toLowerCase();
 
-        // Phân loại nền tảng và gọi module tương ứng
-        if (url.includes('facebook.com') || url.includes('fb.watch') || url.includes('fb.gg')) {
+        // 🛠 FIX LỖI 1: Nhận diện Facebook & Douyin phủ rộng toàn bộ các dạng link rút gọn/share
+        if (lowerUrl.includes('facebook.com') || lowerUrl.includes('fb.watch') || lowerUrl.includes('fb.gg') || lowerUrl.includes('fb.com') || lowerUrl.includes('m.facebook.com')) {
             console.log(`📡 [FACEBOOK] Bóc link: ${url}`);
             rawResult = await parseFacebook(currentBrowser, url);
-        } else if (url.includes('douyin.com')) {
+        } else if (lowerUrl.includes('douyin.com') || lowerUrl.includes('iesdouyin.com')) {
             console.log(`📡 [DOUYIN] Bóc link: ${url}`);
             rawResult = await parseDouyin(currentBrowser, url);
-        } else if (url.includes('tiktok.com') || url.includes('vt.tiktok.com')) {
+        } else if (lowerUrl.includes('tiktok.com') || lowerUrl.includes('vt.tiktok.com')) {
             console.log(`📡 [TIKTOK] Bóc link: ${url}`);
             rawResult = await parseTikTok(currentBrowser, url);
-        } else if (url.includes('youtube.com') || url.includes('youtu.be')) {
+        } else if (lowerUrl.includes('youtube.com') || lowerUrl.includes('youtu.be')) {
             console.log(`📡 [YOUTUBE] Bóc link: ${url}`);
             rawResult = await parseYouTube(url);
         } else {
@@ -127,34 +127,46 @@ app.post('/api/parse', parseLimiter, async (req, res) => {
         const rawData = rawResult.data || {};
         const isImagePost = Array.isArray(rawData.images) && rawData.images.length > 0;
 
-        // Chuẩn hóa danh sách chất lượng video
-        const formatList = (rawData.streams?.combined || []).map(s => ({
-            quality: s.quality,
-            ext: s.ext,
-            url: s.url
-        }));
+        // 🛠 FIX LỖI 2: Quét tất cả các biến video có thể trả về từ module để tạo danh sách Nút Tải
+        let formatList = [];
 
-        if (formatList.length === 0 && rawData.directPlayUrl) {
+        // Kiểm tra mảng streams hiện có
+        if (Array.isArray(rawData.streams?.combined) && rawData.streams.combined.length > 0) {
+            formatList = rawData.streams.combined.map(s => ({
+                quality: s.quality || 'HD',
+                ext: s.ext || 'mp4',
+                url: s.url
+            }));
+        } else if (Array.isArray(rawData.qualityList) && rawData.qualityList.length > 0) {
+            formatList = rawData.qualityList;
+        }
+
+        // Nếu mảng vẫn rỗng, gom các thuộc tính link đơn lẻ (directPlayUrl, video, play, url, nwm_video_url)
+        const fallbackVideoUrl = rawData.directPlayUrl || rawData.video || rawData.playUrl || rawData.play || rawData.nwm_video_url || rawData.url;
+
+        if (formatList.length === 0 && fallbackVideoUrl && typeof fallbackVideoUrl === 'string') {
             formatList.push({
-                quality: '720p',
+                quality: 'HD / No Watermark',
                 ext: 'mp4',
-                url: rawData.directPlayUrl
+                url: fallbackVideoUrl
             });
         }
+
+        const finalVideoUrl = formatList[0]?.url || fallbackVideoUrl || '';
 
         // Chuẩn hóa tập dữ liệu phản hồi
         const cleanData = {
             id: rawData.id || '',
-            title: rawData.title || 'Video',
-            cover: rawData.cover || '',
-            thumbnail: rawData.cover || '',
-            author: rawData.author || '',
+            title: rawData.title || 'Video Media',
+            cover: rawData.cover || rawData.thumbnail || '',
+            thumbnail: rawData.cover || rawData.thumbnail || '',
+            author: rawData.author || rawData.nickname || 'Unknown',
             durationSeconds: rawData.durationSeconds || 0,
             duration: rawData.durationSeconds || 0,
             viewCount: rawData.viewCount || 0,
             
-            directPlayUrl: rawData.directPlayUrl || (formatList[0]?.url || ''),
-            url: rawData.directPlayUrl || (formatList[0]?.url || ''),
+            directPlayUrl: finalVideoUrl,
+            url: finalVideoUrl,
             
             images: isImagePost ? rawData.images : [],
             
@@ -168,7 +180,7 @@ app.post('/api/parse', parseLimiter, async (req, res) => {
         const responsePayload = {
             success: true,
             processTime: rawResult.processTime || '1.0s',
-            platform: rawResult.platform || 'unknown',
+            platform: rawResult.platform || (lowerUrl.includes('facebook') || lowerUrl.includes('fb.') ? 'facebook' : 'unknown'),
             type: isImagePost ? 'image' : 'video',
             data: cleanData
         };
@@ -201,7 +213,7 @@ app.get('/api/download', async (req, res) => {
 
         // Đặt Header Referer tương ứng với từng nền tảng
         let refererHeader = 'https://www.youtube.com/';
-        if (targetUrl.includes('douyin.com')) {
+        if (targetUrl.includes('douyin.com') || targetUrl.includes('iesdouyin.com')) {
             refererHeader = 'https://www.douyin.com/';
         } else if (targetUrl.includes('fbcdn.net') || targetUrl.includes('facebook.com')) {
             refererHeader = 'https://www.facebook.com/';
@@ -235,7 +247,7 @@ app.get('/api/download', async (req, res) => {
             res.setHeader('Content-Length', response.headers['content-length']);
         }
 
-        // Hủy Request Proxy nếu người dùng nhấn Stop/Đóng trình duyệt midway
+        // Hủy Request Proxy nếu người dùng đóng trình duyệt midway
         req.on('close', () => {
             cancelTokenSource.cancel('User aborted download.');
         });
