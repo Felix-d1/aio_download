@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NEXUS DOWNLOADER - Tải Video & Album Đa Nền Tảng Siêu Tốc</title>
+    <title>AIO DOWNLOADER - Tải Video & Album Đa Nền Tảng Siêu Tốc</title>
     
     <!-- Google Fonts & Font Awesome -->
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
@@ -525,7 +525,7 @@
             margin-bottom: 20px;
         }
 
-        /* Quality Download Options */
+        /* Dynamic Download Buttons Group */
         .quality-options-group {
             display: flex;
             flex-direction: column;
@@ -578,17 +578,6 @@
         .btn-video-sd:hover {
             background: var(--primary);
             color: #000;
-            transform: translateY(-2px);
-        }
-
-        .btn-audio {
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid var(--border-color);
-            color: var(--text-main);
-        }
-
-        .btn-audio:hover {
-            background: rgba(255, 255, 255, 0.12);
             transform: translateY(-2px);
         }
 
@@ -776,7 +765,7 @@
                 <div class="logo-icon">
                     <i class="fa-solid fa-bolt-lightning"></i>
                 </div>
-                <span class="logo-text">NEXUS DOWNLOADER</span>
+                <span class="logo-text">AIO DOWNLOADER</span>
             </a>
             <div class="nav-badge">
                 <span class="status-dot"></span>
@@ -861,24 +850,10 @@
                         <div class="media-author" id="resAuthor"><i class="fa-solid fa-circle-user"></i> @tacgia</div>
                     </div>
                     
-                    <!-- Danh sách nút tải theo từng Chất lượng (HD / SD / Audio) -->
-                    <div class="quality-options-group" id="videoQualityGroup">
+                    <!-- Danh sách nút tải theo từng Chất lượng (Tạo động bằng JS) -->
+                    <div class="quality-options-group">
                         <div class="quality-label"><i class="fa-solid fa-sliders"></i> Tùy chọn tải về:</div>
-                        
-                        <a href="#" id="btnVideoHD" class="btn-dl btn-video-hd" target="_blank" style="display: none;">
-                            <span><i class="fa-solid fa-circle-check"></i> Tải Video FULL HD (1080p)</span>
-                            <span class="quality-badge" id="hdQualityLabel">HD / MP4</span>
-                        </a>
-                        
-                        <a href="#" id="btnVideoSD" class="btn-dl btn-video-sd" target="_blank" style="display: none;">
-                            <span><i class="fa-solid fa-download"></i> Tải Video Tiết Kiệm Dung Lượng (SD)</span>
-                            <span class="quality-badge" id="sdQualityLabel">SD / 480p</span>
-                        </a>
-                        
-                        <a href="#" id="btnAudio" class="btn-dl btn-audio" target="_blank" style="display: none;">
-                            <span><i class="fa-solid fa-music"></i> Tải Nhạc Nền (Audio MP3)</span>
-                            <span class="quality-badge">AUDIO</span>
-                        </a>
+                        <div id="dynamicBtnGroup" style="display: flex; flex-direction: column; gap: 10px;"></div>
                     </div>
                 </div>
             </div>
@@ -909,7 +884,7 @@
 
     <!-- Footer Copyright -->
     <footer>
-        <p>© 2026 <strong>NEXUS DOWNLOADER ENGINE</strong>. Powered by Phan Duy Chấn Copyright.</p>
+        <p>© 2026 <strong>AIO DOWNLOADER ENGINE</strong>. Powered by Phan Duy Chấn Copyright.</p>
     </footer>
 
     <!-- Client Logic Script -->
@@ -921,7 +896,7 @@
         const resultCard = document.getElementById('resultCard');
         
         let currentImageArray = [];
-        let searchHistory = JSON.parse(localStorage.getItem('nexus_history') || '[]');
+        let searchHistory = JSON.parse(localStorage.getItem('aio_history') || '[]');
 
         // Initialize App
         document.addEventListener('DOMContentLoaded', () => {
@@ -996,7 +971,7 @@
 
         function clearHistory() {
             searchHistory = [];
-            localStorage.removeItem('nexus_history');
+            localStorage.removeItem('aio_history');
             renderHistory();
             showToast('Đã xóa lịch sử tìm kiếm!');
         }
@@ -1005,7 +980,7 @@
             searchHistory = searchHistory.filter(item => item.url !== url);
             searchHistory.unshift({ title, url, platform });
             if (searchHistory.length > 10) searchHistory.pop();
-            localStorage.setItem('nexus_history', JSON.stringify(searchHistory));
+            localStorage.setItem('aio_history', JSON.stringify(searchHistory));
             renderHistory();
         }
 
@@ -1068,7 +1043,7 @@
             }
         }
 
-        // --- HÀM HÓA RENDER DỮ LIỆU ---
+        // --- HÀM RENDER DỮ LIỆU ĐÃ FIX ĐẦY ĐỦ NÚT BẤM ---
         function displayResult(data, platform, procTime) {
             document.getElementById('procTime').innerText = procTime;
             
@@ -1088,47 +1063,45 @@
 
             // Media Type Badge Text
             const mediaTypeBadge = document.getElementById('mediaTypeBadge');
-            if (data.images && data.images.length > 0) {
-                mediaTypeBadge.innerHTML = `<i class="fa-solid fa-images"></i> Image Album`;
-            } else {
-                mediaTypeBadge.innerHTML = `<i class="fa-solid fa-film"></i> Video Stream`;
-            }
+            const isImageAlbum = Array.isArray(data.images) && data.images.length > 0;
+            mediaTypeBadge.innerHTML = isImageAlbum 
+                ? `<i class="fa-solid fa-images"></i> Image Album` 
+                : `<i class="fa-solid fa-film"></i> Video Stream`;
 
-            // Video Action Buttons
-            const btnHD = document.getElementById('btnVideoHD');
-            const btnSD = document.getElementById('btnVideoSD');
-            const btnAudio = document.getElementById('btnAudio');
-            const hdQualityLabel = document.getElementById('hdQualityLabel');
-            const sdQualityLabel = document.getElementById('sdQualityLabel');
+            // Clear Dynamic Button Group
+            const dynamicBtnGroup = document.getElementById('dynamicBtnGroup');
+            dynamicBtnGroup.innerHTML = '';
 
-            // Reset buttons
-            btnHD.style.display = 'none';
-            btnSD.style.display = 'none';
-            btnAudio.style.display = 'none';
-
-            // Tìm luồng video từ các thuộc tính mảng tương thích Backend
+            // Tìm luồng video từ các thuộc tính Backend
             const formats = data.qualityList || data.formats || data.streams || [];
             const directUrl = data.directPlayUrl || data.url;
 
             if (formats.length > 0) {
-                // Ưu tiên lấy format chất lượng cao nhất
-                const mainFormat = formats[0];
-                btnHD.href = `/api/download?url=${encodeURIComponent(mainFormat.url)}&filename=${encodeURIComponent((data.title || 'video') + '.mp4')}`;
-                hdQualityLabel.innerText = `${mainFormat.quality || 'HD'} / ${mainFormat.ext || 'MP4'}`;
-                btnHD.style.display = 'flex';
-
-                // Nếu có luồng format thứ 2
-                if (formats.length > 1) {
-                    const subFormat = formats[1];
-                    btnSD.href = `/api/download?url=${encodeURIComponent(subFormat.url)}&filename=${encodeURIComponent((data.title || 'video') + '_sd.mp4')}`;
-                    sdQualityLabel.innerText = `${subFormat.quality || 'SD'} / ${subFormat.ext || 'MP4'}`;
-                    btnSD.style.display = 'flex';
-                }
+                formats.forEach((item, idx) => {
+                    const downloadProxy = `/api/download?url=${encodeURIComponent(item.url)}&filename=${encodeURIComponent((data.title || 'video') + '_' + (item.quality || 'HD'))}.${item.ext || 'mp4'}`;
+                    const btnClass = idx === 0 ? 'btn-video-hd' : 'btn-video-sd';
+                    
+                    const btnAnchor = document.createElement('a');
+                    btnAnchor.href = downloadProxy;
+                    btnAnchor.target = '_blank';
+                    btnAnchor.className = `btn-dl ${btnClass}`;
+                    btnAnchor.innerHTML = `
+                        <span><i class="fa-solid ${idx === 0 ? 'fa-circle-check' : 'fa-download'}"></i> Tải Video (${item.quality || 'HD'})</span>
+                        <span class="quality-badge">${(item.ext || 'MP4').toUpperCase()}</span>
+                    `;
+                    dynamicBtnGroup.appendChild(btnAnchor);
+                });
             } else if (directUrl) {
-                // Trường hợp chỉ có 1 Direct URL duy nhất
-                btnHD.href = `/api/download?url=${encodeURIComponent(directUrl)}&filename=${encodeURIComponent((data.title || 'video') + '.mp4')}`;
-                hdQualityLabel.innerText = `HD / MP4`;
-                btnHD.style.display = 'flex';
+                const downloadProxy = `/api/download?url=${encodeURIComponent(directUrl)}&filename=${encodeURIComponent(data.title || 'video')}.mp4`;
+                const btnAnchor = document.createElement('a');
+                btnAnchor.href = downloadProxy;
+                btnAnchor.target = '_blank';
+                btnAnchor.className = 'btn-dl btn-video-hd';
+                btnAnchor.innerHTML = `
+                    <span><i class="fa-solid fa-circle-check"></i> Tải Video Full HD</span>
+                    <span class="quality-badge">MP4</span>
+                `;
+                dynamicBtnGroup.appendChild(btnAnchor);
             }
 
             // Gallery / Photos Setup (Bài viết dạng Album)
@@ -1136,7 +1109,7 @@
             const galleryGrid = document.getElementById('galleryGrid');
             const imgCount = document.getElementById('imgCount');
 
-            if (data.images && Array.isArray(data.images) && data.images.length > 0) {
+            if (isImageAlbum) {
                 currentImageArray = data.images;
                 imgCount.innerText = data.images.length;
                 galleryGrid.innerHTML = '';
@@ -1149,7 +1122,7 @@
                         <img src="${imgUrl}" alt="Photo ${index + 1}" loading="lazy">
                         <div class="img-overlay">
                             <span class="img-num">#${index + 1}</span>
-                            <a href="${downloadProxyUrl}" class="btn-img-dl" title="Tải ảnh này"><i class="fa-solid fa-download"></i></a>
+                            <a href="${downloadProxyUrl}" class="btn-img-dl" title="Tải ảnh này" target="_blank"><i class="fa-solid fa-download"></i></a>
                         </div>
                     `;
                     galleryGrid.appendChild(item);
