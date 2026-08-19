@@ -984,11 +984,13 @@
             renderHistory();
         }
 
+        // FIX LỖI NHẬN DIỆN FB/DOUYIN TOÀN DIỆN
         function detectPlatform(url) {
-            if (url.includes('youtube.com') || url.includes('youtu.be')) return 'youtube';
-            if (url.includes('tiktok.com')) return 'tiktok';
-            if (url.includes('douyin.com')) return 'douyin';
-            if (url.includes('facebook.com') || url.includes('fb.watch')) return 'facebook';
+            const cleanUrl = url.toLowerCase();
+            if (cleanUrl.includes('youtube.com') || cleanUrl.includes('youtu.be')) return 'youtube';
+            if (cleanUrl.includes('tiktok.com')) return 'tiktok';
+            if (cleanUrl.includes('douyin.com') || cleanUrl.includes('iesdouyin.com')) return 'douyin';
+            if (cleanUrl.includes('facebook.com') || cleanUrl.includes('fb.watch') || cleanUrl.includes('fb.com') || cleanUrl.includes('fb.gg')) return 'facebook';
             return 'unknown';
         }
 
@@ -1002,7 +1004,7 @@
             }
         }
 
-        // --- CORE PROCESS DOWNLOAD FUNCTION (KẾT NỐI BACKEND NODEJS) ---
+        // CORE PROCESS DOWNLOAD FUNCTION
         async function processDownload() {
             const url = urlInput.value.trim();
             if (!url) {
@@ -1010,13 +1012,11 @@
                 return;
             }
 
-            // Bat trang thai UI Loading
             btnParse.disabled = true;
             loadingState.style.display = 'block';
             resultCard.style.display = 'none';
 
             try {
-                // Gọi API backend NodeJS
                 const response = await fetch('/api/parse', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -1029,7 +1029,6 @@
                     throw new Error(result.error || 'Bóc tách dữ liệu thất bại từ máy chủ!');
                 }
 
-                // Hiển thị dữ liệu thu được
                 displayResult(result.data, result.platform || detectPlatform(url), result.processTime || '1.0s');
                 saveToHistory(result.data.title || 'Media Video', url, result.platform || detectPlatform(url));
                 showToast('Bóc tách dữ liệu thành công!');
@@ -1043,7 +1042,7 @@
             }
         }
 
-        // --- HÀM RENDER DỮ LIỆU ĐÃ FIX ĐẦY ĐỦ NÚT BẤM ---
+        // HÀM RENDER DỮ LIỆU ĐÃ FIX TRIỆT ĐỂ LỖI MẤT NÚT TẢI
         function displayResult(data, platform, procTime) {
             document.getElementById('procTime').innerText = procTime;
             
@@ -1072,39 +1071,53 @@
             const dynamicBtnGroup = document.getElementById('dynamicBtnGroup');
             dynamicBtnGroup.innerHTML = '';
 
-            // Tìm luồng video từ các thuộc tính Backend
-            const formats = data.qualityList || data.formats || data.streams || [];
-            const directUrl = data.directPlayUrl || data.url;
+            // 🌟 THU GOM TẤT CẢ CÁC BIẾN LINK CÓ THỂ CÓ TỪ BACKEND
+            let streamList = [];
 
-            if (formats.length > 0) {
-                formats.forEach((item, idx) => {
-                    const downloadProxy = `/api/download?url=${encodeURIComponent(item.url)}&filename=${encodeURIComponent((data.title || 'video') + '_' + (item.quality || 'HD'))}.${item.ext || 'mp4'}`;
-                    const btnClass = idx === 0 ? 'btn-video-hd' : 'btn-video-sd';
-                    
-                    const btnAnchor = document.createElement('a');
-                    btnAnchor.href = downloadProxy;
-                    btnAnchor.target = '_blank';
-                    btnAnchor.className = `btn-dl ${btnClass}`;
-                    btnAnchor.innerHTML = `
-                        <span><i class="fa-solid ${idx === 0 ? 'fa-circle-check' : 'fa-download'}"></i> Tải Video (${item.quality || 'HD'})</span>
-                        <span class="quality-badge">${(item.ext || 'MP4').toUpperCase()}</span>
-                    `;
-                    dynamicBtnGroup.appendChild(btnAnchor);
-                });
-            } else if (directUrl) {
-                const downloadProxy = `/api/download?url=${encodeURIComponent(directUrl)}&filename=${encodeURIComponent(data.title || 'video')}.mp4`;
-                const btnAnchor = document.createElement('a');
-                btnAnchor.href = downloadProxy;
-                btnAnchor.target = '_blank';
-                btnAnchor.className = 'btn-dl btn-video-hd';
-                btnAnchor.innerHTML = `
-                    <span><i class="fa-solid fa-circle-check"></i> Tải Video Full HD</span>
-                    <span class="quality-badge">MP4</span>
-                `;
-                dynamicBtnGroup.appendChild(btnAnchor);
+            if (Array.isArray(data.qualityList) && data.qualityList.length > 0) {
+                streamList = data.qualityList;
+            } else if (Array.isArray(data.formats) && data.formats.length > 0) {
+                streamList = data.formats;
+            } else if (Array.isArray(data.streams) && data.streams.length > 0) {
+                streamList = data.streams;
             }
 
-            // Gallery / Photos Setup (Bài viết dạng Album)
+            // Fallback nếuBackend trả link đơn lẻ (directPlayUrl, url, video, playUrl)
+            if (streamList.length === 0) {
+                const singleUrl = data.directPlayUrl || data.url || data.video || data.playUrl;
+                if (singleUrl) {
+                    streamList = [{
+                        quality: 'HD Không Logo',
+                        ext: 'mp4',
+                        url: singleUrl
+                    }];
+                }
+            }
+
+            // VẼ NÚT TẢI VỀ DỰA TRÊN MẢNG CHUẨN HÓA
+            if (streamList.length > 0) {
+                streamList.forEach((item, idx) => {
+                    const videoUrl = item.url || item;
+                    if (typeof videoUrl === 'string' && videoUrl.startsWith('http')) {
+                        const downloadProxy = `/api/download?url=${encodeURIComponent(videoUrl)}&filename=${encodeURIComponent((data.title || 'video') + '_' + (item.quality || 'HD'))}.${item.ext || 'mp4'}`;
+                        const btnClass = idx === 0 ? 'btn-video-hd' : 'btn-video-sd';
+                        
+                        const btnAnchor = document.createElement('a');
+                        btnAnchor.href = downloadProxy;
+                        btnAnchor.target = '_blank';
+                        btnAnchor.className = `btn-dl ${btnClass}`;
+                        btnAnchor.innerHTML = `
+                            <span><i class="fa-solid ${idx === 0 ? 'fa-circle-check' : 'fa-download'}"></i> Tải Video (${item.quality || 'HD Không Logo'})</span>
+                            <span class="quality-badge">${(item.ext || 'MP4').toUpperCase()}</span>
+                        `;
+                        dynamicBtnGroup.appendChild(btnAnchor);
+                    }
+                });
+            } else if (!isImageAlbum) {
+                dynamicBtnGroup.innerHTML = `<p style="color: #ef4444; font-size: 0.88rem; font-weight: 600;"><i class="fa-solid fa-triangle-exclamation"></i> Không thể tạo luồng tải cho video này. Hãy thử lại sau!</p>`;
+            }
+
+            // Gallery / Photos Setup
             const galleryContainer = document.getElementById('galleryContainer');
             const galleryGrid = document.getElementById('galleryGrid');
             const imgCount = document.getElementById('imgCount');
