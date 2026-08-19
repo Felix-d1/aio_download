@@ -1,37 +1,30 @@
-# Sử dụng Image Puppeteer chính thức đã tích hợp sẵn Google Chrome và Node.js
-FROM ghcr.io/puppeteer/puppeteer:21.5.0
+FROM node:20-slim
 
-# Thiết lập biến môi trường để Puppeteer sử dụng Google Chrome hệ thống
-ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
-    PUPPETEER_EXECUTABLE_PATH=/usr/bin/google-chrome-stable \
-    NODE_ENV=production
+# Cài đặt Google Chrome và các thư viện cần thiết cho Puppeteer
+RUN apt-get update && apt-get install -y \
+    wget \
+    gnupg \
+    ca-certificates \
+    procps \
+    libxss1 \
+    --no-install-recommends \
+    && wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key add - \
+    && sh -c 'echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google.list' \
+    && apt-get update \
+    && apt-get install -y google-chrome-stable --no-install-recommends \
+    && rm -rf /var/lib/apt/lists/*
 
-# Chuyển quyền làm việc sang user root để cài đặt và sao chép file
-USER root
+WORKDIR /app
 
-# Tạo thư mục ứng dụng
-WORKDIR /usr/src/app
-
-# Sao chép package.json và package-lock.json (nếu có)
+# Copy các tệp cấu hình
 COPY package*.json ./
 
-# Đổi dòng cũ:
-# RUN npm ci --only=production
+# Cài đặt dependencies (bỏ qua script chuẩn bị nếu có)
+RUN npm install --production --ignore-scripts
 
-# Thành dòng mới:
-RUN npm install --omit=dev
-
-# Sao chép toàn bộ mã nguồn vào Container
+# Copy toàn bộ nguồn
 COPY . .
 
-# Phân quyền cho Puppeteer user để tránh lỗi bảo mật sandbox
-RUN chown -R pptruser:pptruser /usr/src/app
-
-# Chuyển sang user pptruser an toàn của Puppeteer
-USER pptruser
-
-# Mở cổng 3000 (Render sẽ tự động ánh xạ PORT này)
 EXPOSE 3000
 
-# Lệnh khởi chạy server
-CMD ["node", "server.js"]
+CMD ["npm", "start"]
