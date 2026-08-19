@@ -1,22 +1,20 @@
 import axios from 'axios';
 
 /**
- * Hàm bóc tách dữ liệu Douyin (Video / Slide ảnh / Audio)
- * @param {import('puppeteer').Browser} browser Instance của Puppeteer
- * @param {string} shareUrl URL dán từ người dùng
+ * Bóc tách dữ liệu Douyin trực tiếp bằng API nội bộ của Douyin (Không dùng API bên thứ 3)
  */
 export async function parseDouyin(browser, shareUrl) {
     const startTime = Date.now();
     let fetchPage = null;
 
-    // 1. Trích xuất URL Douyin từ văn bản người dùng nhập
+    // 1. Trích xuất URL Douyin
     const urlMatch = shareUrl.match(/https?:\/\/[a-zA-Z0-9\-]+\.douyin\.com\/[^\s"]+/);
     if (!urlMatch) throw new Error('Không tìm thấy URL Douyin hợp lệ!');
 
     let targetUrl = urlMatch[0];
     let itemId = extractAwemeId(targetUrl);
 
-    // 2. Giải mã URL nếu người dùng gửi link ngắn (v.douyin.com / iesdouyin.com)
+    // 2. Giải mã URL ngắn (v.douyin.com) để lấy itemId nếu chưa có
     if (!itemId) {
         try {
             const redirectRes = await axios.get(targetUrl, {
@@ -30,36 +28,30 @@ export async function parseDouyin(browser, shareUrl) {
             itemId = extractAwemeId(finalUrl);
             if (finalUrl.startsWith('http')) targetUrl = finalUrl;
         } catch (e) {
-            console.log('⚠️ Không thể giải mã URL bằng Axios, sẽ chuyển tiếp qua Puppeteer...');
+            console.log('⚠️ Không thể giải mã URL bằng Axios, sẽ thử mở tab Puppeteer...');
         }
     }
 
     try {
         fetchPage = await browser.newPage();
-        
-        // Giả lập Headers chuẩn trình duyệt PC để qua mặt Cloudflare/Anti-bot
+
+        // Cấu hình Headers chuẩn như Trình duyệt thật để Douyin nhả Cookie ttwid
         await fetchPage.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36');
         await fetchPage.setExtraHTTPHeaders({
             'accept-language': 'zh-CN,zh;q=0.9,en;q=0.8',
-            'sec-ch-ua': '"Not-A.Brand";v="99", "Chromium";v="124", "Google Chrome";v="124"',
-            'sec-ch-ua-platform': '"Windows"'
+            'sec-ch-ua': '"Chromium";v="124", "Google Chrome";v="124"',
+            'sec-ch-ua-platform': '"Windows"',
+            'sec-fetch-dest': 'empty',
+            'sec-fetch-mode': 'cors',
+            'sec-fetch-site': 'same-origin'
         });
 
-        // Bắt thêm Network Sniffer dự phòng CDN ảnh
-        const capturedImages = new Set();
-        fetchPage.on('response', response => {
-            const resUrl = response.url();
-            if (resUrl.includes('douyinpic.com') && (resUrl.includes('tplv-dy-aweme-images') || resUrl.includes('tos-cn-i-'))) {
-                capturedImages.add(fixUrlProtocol(resUrl.replace(':q75.webp', ':q100.webp')));
-            }
-        });
-
-        // Mở trang để gán Cookie & Bypass CORS
+        // Mở trang chủ Douyin để Browser tự động lấy Cookie (ttwid) hợp lệ
         await fetchPage.goto('https://www.douyin.com/', { waitUntil: 'domcontentloaded', timeout: 10000 }).catch(() => {});
 
         let resultData = null;
 
-        // BƯỚC A: Thử fetch qua API v1 ngầm trong context trình duyệt
+        // BƯỚC 1: Gọi API ngầm nội bộ của Douyin (`aweme/v1/web/aweme/detail`)
         if (itemId) {
             resultData = await fetchPage.evaluate(async (vId) => {
                 try {
@@ -73,7 +65,7 @@ export async function parseDouyin(browser, shareUrl) {
                     const detail = data?.aweme_detail;
                     if (!detail) return null;
 
-                    // Xử lý Ảnh
+                    // A. Bóc tách Ảnh (Tập ảnh / Note)
                     let images = [];
                     if (detail.images && detail.images.length > 0) {
                         images = detail.images.map(img => {
@@ -82,23 +74,30 @@ export async function parseDouyin(browser, shareUrl) {
                         }).filter(Boolean);
                     }
 
-                    // Xử lý Video (Chuyển link playwm thành play không logo & gỡ mã hóa HD)
-                    const urlList = detail.video?.play_addr?.url_list || detail.video?.bit_rate?.[0]?.play_addr?.url_list || [];
-                    let videoUrl = urlList.find(u => u.includes('zjcdn.com')) || urlList[0] || null;
-                    if (videoUrl) {
-                        videoUrl = videoUrl.replace('playwm', 'play');
+                    // B. Bóc tách Video (Quét sạch các vị trí chứa link CDN)
+                    const videoObj = detail.video || {};
+                    const urlList = videoObj.play_addr?.url_list || 
+                                    videoObj.bit_rate?.[0]?.play_addr?.url_list || 
+                                    videoObj.play_addr_h264?.url_list || [];
+
+                    let rawVideoUrl = urlList.find(u => u.includes('zjcdn.com') || u.includes('douyinvod.com')) || urlList[0] || null;
+
+                    // Thay thế playwm thành play để lấy video Không Logo
+                    if (rawVideoUrl) {
+                        rawVideoUrl = rawVideoUrl.replace('playwm', 'play');
                     }
 
+                    // C. Cover
                     const cover = images.length > 0 
                         ? images[0] 
-                        : (detail.video?.cover?.url_list?.[0] || detail.video?.origin_cover?.url_list?.[0] || null);
+                        : (videoObj.cover?.url_list?.[0] || videoObj.origin_cover?.url_list?.[0] || null);
 
                     return {
                         id: vId,
                         title: detail.desc || 'Bài đăng Douyin',
                         cover: cover,
                         author: detail.author?.nickname || 'Douyin User',
-                        videoUrl: videoUrl,
+                        videoUrl: rawVideoUrl,
                         images: images,
                         musicUrl: detail.music?.play_url?.url_list?.[0] || null
                     };
@@ -108,19 +107,17 @@ export async function parseDouyin(browser, shareUrl) {
             }, itemId);
         }
 
-        // BƯỚC B: Fallback - Điều hướng thẳng vào bài viết và trích xuất Script Data
+        // BƯỚC 2: Fallback - Nếu API v1 trả về rỗng, điều hướng thẳng bài viết để đọc Script Data
         if (!resultData || (!resultData.videoUrl && resultData.images.length === 0)) {
-            console.log(`🌐 [DOUYIN] Fallback: Điều hướng trực tiếp URL -> ${targetUrl}`);
-            await fetchPage.goto(targetUrl, { waitUntil: 'networkidle2', timeout: 20000 }).catch(() => {});
+            console.log(`🌐 [DOUYIN] Fallback DOM: Truy cập trực tiếp -> ${targetUrl}`);
+            await fetchPage.goto(targetUrl, { waitUntil: 'networkidle2', timeout: 15000 }).catch(() => {});
 
             const pageData = await fetchPage.evaluate(() => {
                 try {
-                    // Quét các thẻ Script dữ liệu của Douyin
                     const scripts = Array.from(document.querySelectorAll('script'));
                     for (const script of scripts) {
                         const content = script.innerText || script.textContent || '';
                         
-                        // Cấu trúc 1: RENDER_DATA
                         if (content.includes('RENDER_DATA')) {
                             const decodedText = decodeURIComponent(content.replace(/.*?RENDER_DATA\s*=\s*/, '').trim());
                             const jsonData = JSON.parse(decodedText);
@@ -130,7 +127,6 @@ export async function parseDouyin(browser, shareUrl) {
                             }
                         }
 
-                        // Cấu trúc 2: _SSR_DATA hoặc __INIT_PROPERTIES__
                         if (content.includes('awemeDetail') || content.includes('noteDetail')) {
                             const jsonMatch = content.match(/\{.*"awemeDetail".*\}/s) || content.match(/\{.*"noteDetail".*\}/s);
                             if (jsonMatch) {
@@ -145,30 +141,19 @@ export async function parseDouyin(browser, shareUrl) {
 
             if (pageData) {
                 resultData = formatParsedData(pageData);
-            } else if (capturedImages.size > 0) {
-                const imgList = Array.from(capturedImages);
-                resultData = {
-                    id: itemId || Date.now().toString(),
-                    title: 'Tập ảnh Douyin (Note)',
-                    cover: imgList[0],
-                    author: 'Douyin Creator',
-                    videoUrl: null,
-                    images: imgList,
-                    musicUrl: null
-                };
             }
         }
 
         // Kiểm tra kết quả
         if (!resultData || (!resultData.videoUrl && resultData.images.length === 0)) {
-            throw new Error('Không bóc tách được dữ liệu Video hoặc Ảnh từ Douyin!');
+            throw new Error('Không bóc tách được Video hoặc Ảnh từ Douyin!');
         }
 
-        // Chuẩn hóa toàn bộ URL HTTP/HTTPS
-        resultData.videoUrl = fixUrlProtocol(resultData.videoUrl);
-        resultData.cover = fixUrlProtocol(resultData.cover);
-        resultData.musicUrl = fixUrlProtocol(resultData.musicUrl);
-        resultData.images = resultData.images.map(fixUrlProtocol);
+        // 🛠 FIX LỖI QUAN TRỌNG: Chuẩn hóa toàn bộ URL để Server & Frontend tải được
+        resultData.videoUrl = fixUrl(resultData.videoUrl);
+        resultData.cover = fixUrl(resultData.cover);
+        resultData.musicUrl = fixUrl(resultData.musicUrl);
+        resultData.images = resultData.images.map(fixUrl);
 
         return {
             processTime: `${((Date.now() - startTime) / 1000).toFixed(2)}s`,
@@ -181,18 +166,12 @@ export async function parseDouyin(browser, shareUrl) {
     }
 }
 
-/**
- * Trích xuất Aweme ID từ chuỗi URL
- */
 function extractAwemeId(url) {
     if (!url) return null;
     const match = url.match(/(?:video|note|slideshow|modal_id=)\/??(\d{18,20})/i) || url.match(/(\d{18,20})/);
     return match ? match[1] : null;
 }
 
-/**
- * Định dạng dữ liệu từ Object JSON của Douyin
- */
 function formatParsedData(detail) {
     const vId = detail.aweme_id || detail.item_id || '';
 
@@ -204,15 +183,16 @@ function formatParsedData(detail) {
         }).filter(Boolean);
     }
 
-    const urlList = detail.video?.play_addr?.url_list || detail.video?.bit_rate?.[0]?.play_addr?.url_list || [];
-    let videoUrl = urlList.find(u => u.includes('zjcdn.com')) || urlList[0] || null;
+    const videoObj = detail.video || {};
+    const urlList = videoObj.play_addr?.url_list || videoObj.bit_rate?.[0]?.play_addr?.url_list || [];
+    let videoUrl = urlList.find(u => u.includes('zjcdn.com') || u.includes('douyinvod.com')) || urlList[0] || null;
     if (videoUrl) {
         videoUrl = videoUrl.replace('playwm', 'play');
     }
 
     const cover = images.length > 0 
         ? images[0] 
-        : (detail.video?.cover?.url_list?.[0] || detail.video?.origin_cover?.url_list?.[0] || null);
+        : (videoObj.cover?.url_list?.[0] || videoObj.origin_cover?.url_list?.[0] || null);
 
     return {
         id: vId,
@@ -225,11 +205,10 @@ function formatParsedData(detail) {
     };
 }
 
-/**
- * Đảm bảo URL luôn có tiền tố https:
- */
-function fixUrlProtocol(url) {
+// Bắt buộc chuyển // -> https:// để Server/Client không bị đứt link
+function fixUrl(url) {
     if (!url || typeof url !== 'string') return null;
     if (url.startsWith('//')) return `https:${url}`;
+    if (url.startsWith('http://')) return url.replace('http://', 'https://');
     return url;
 }
