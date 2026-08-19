@@ -4,8 +4,6 @@ import puppeteer from 'puppeteer';
 import axios from 'axios';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import NodeCache from 'node-cache';
-import rateLimit from 'express-rate-limit';
 
 // Import các module bóc tách dữ liệu
 import { parseDouyin } from './modules/douyin.js';
@@ -18,20 +16,6 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 
-// ------------------------------------------------------------------
-// CẤU HÌNH BẢO VỆ & TỐI ƯU HIỆU NĂNG
-// ------------------------------------------------------------------
-
-// 1. Lưu Cache kết quả bóc link trong 10 phút (600 giây)
-const apiCache = new NodeCache({ stdTTL: 600, checkperiod: 120 });
-
-// 2. Chống Spam / DDOS (Tối đa 30 request / 1 phút)
-const parseLimiter = rateLimit({
-    windowMs: 1 * 60 * 1000, 
-    max: 30,
-    message: { success: false, error: 'Bạn đã gửi quá nhiều yêu cầu. Vui lòng đợi 1 phút!' }
-});
-
 // Cấu hình Middleware
 app.use(cors());
 app.use(express.json());
@@ -41,46 +25,40 @@ app.use(express.static(path.join(__dirname, 'public')));
 let browser = null;
 
 /**
- * Khởi tạo trình duyệt Puppeteer tối ưu cho Docker / Render.com
+ * Khởi tạo trình duyệt Puppeteer ngầm khi cần
  */
 async function initBrowser() {
-    if (!browser || !browser.isConnected()) {
+    if (!browser) {
         try {
             browser = await puppeteer.launch({
                 headless: 'new',
-                executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || null,
                 args: [
                     '--no-sandbox',
                     '--disable-setuid-sandbox',
                     '--disable-dev-shm-usage',
                     '--disable-accelerated-2d-canvas',
                     '--disable-gpu',
-                    '--no-first-run',
-                    '--no-zygote',
-                    '--single-process',
-                    '--disable-extensions',
                     '--blink-settings=imagesEnabled=false'
                 ]
             });
-            console.log('✅ Trình duyệt Puppeteer đã sẵn sàng.');
+            console.log('✅ Trình duyệt ngầm Puppeteer đã khởi tạo thành công.');
         } catch (err) {
             console.error('❌ Lỗi khởi tạo Puppeteer:', err.message);
         }
     }
-    return browser;
 }
 
 // ------------------------------------------------------------------
 // 1. API PARSE: Phân loại nền tảng & Bóc tách dữ liệu
 // ------------------------------------------------------------------
-app.post('/api/parse', parseLimiter, async (req, res) => {
+app.post('/api/parse', async (req, res) => {
     try {
         let { url } = req.body;
         if (!url) {
             return res.status(400).json({ success: false, error: 'Vui lòng cung cấp URL!' });
         }
 
-        // Trích xuất liên kết HTTP/HTTPS chuẩn xác từ văn bản người dùng dán vào
+        // Trích xuất liên kết HTTP/HTTPS từ đoạn văn bản người dùng dán vào
         const matchUrl = url.match(/(https?:\/\/[^\s]+)/);
         if (matchUrl) {
             url = matchUrl[0];
@@ -88,30 +66,23 @@ app.post('/api/parse', parseLimiter, async (req, res) => {
             return res.status(400).json({ success: false, error: 'Đường dẫn không hợp lệ!' });
         }
 
-        // 🌟 KIỂM TRA CACHE TRƯỚC KHI BÓC LINK
-        const cacheKey = `parse_${url}`;
-        const cachedData = apiCache.get(cacheKey);
-        if (cachedData) {
-            console.log(`⚡ [CACHE HIT]: ${url}`);
-            return res.json(cachedData);
-        }
-
         let rawResult = null;
-        const currentBrowser = await initBrowser();
-        const lowerUrl = url.toLowerCase();
 
-        // 🛠 FIX LỖI 1: Nhận diện Facebook & Douyin phủ rộng toàn bộ các dạng link rút gọn/share
-        if (lowerUrl.includes('facebook.com') || lowerUrl.includes('fb.watch') || lowerUrl.includes('fb.gg') || lowerUrl.includes('fb.com') || lowerUrl.includes('m.facebook.com')) {
+        // Phân loại nền tảng và gọi module tương ứng
+        if (url.includes('facebook.com') || url.includes('fb.watch') || url.includes('fb.gg')) {
+            if (!browser) await initBrowser();
             console.log(`📡 [FACEBOOK] Bóc link: ${url}`);
-            rawResult = await parseFacebook(currentBrowser, url);
-        } else if (lowerUrl.includes('douyin.com') || lowerUrl.includes('iesdouyin.com')) {
+            rawResult = await parseFacebook(browser, url);
+        } else if (url.includes('douyin.com')) {
+            if (!browser) await initBrowser();
             console.log(`📡 [DOUYIN] Bóc link: ${url}`);
-            rawResult = await parseDouyin(currentBrowser, url);
-        } else if (lowerUrl.includes('tiktok.com') || lowerUrl.includes('vt.tiktok.com')) {
+            rawResult = await parseDouyin(browser, url);
+        } else if (url.includes('tiktok.com') || url.includes('vt.tiktok.com')) {
+            if (!browser) await initBrowser();
             console.log(`📡 [TIKTOK] Bóc link: ${url}`);
-            rawResult = await parseTikTok(currentBrowser, url);
-        } else if (lowerUrl.includes('youtube.com') || lowerUrl.includes('youtu.be')) {
-            console.log(`📡 [YOUTUBE] Bóc link: ${url}`);
+            rawResult = await parseTikTok(browser, url);
+        } else if (url.includes('youtube.com') || url.includes('youtu.be')) {
+            console.log(`📡 [YOUTUBE] Bóc link (yt-dlp/API): ${url}`);
             rawResult = await parseYouTube(url);
         } else {
             return res.status(400).json({ 
@@ -120,56 +91,44 @@ app.post('/api/parse', parseLimiter, async (req, res) => {
             });
         }
 
-        if (!rawResult || !rawResult.data) {
-            throw new Error('Không lấy được dữ liệu từ module bóc tách.');
-        }
-
         const rawData = rawResult.data || {};
         const isImagePost = Array.isArray(rawData.images) && rawData.images.length > 0;
 
-        // 🛠 FIX LỖI 2: Quét tất cả các biến video có thể trả về từ module để tạo danh sách Nút Tải
-        let formatList = [];
+        // 🌟 Chuẩn hóa danh sách chất lượng video
+        const formatList = (rawData.streams?.combined || []).map(s => ({
+            quality: s.quality,
+            ext: s.ext,
+            url: s.url
+        }));
 
-        // Kiểm tra mảng streams hiện có
-        if (Array.isArray(rawData.streams?.combined) && rawData.streams.combined.length > 0) {
-            formatList = rawData.streams.combined.map(s => ({
-                quality: s.quality || 'HD',
-                ext: s.ext || 'mp4',
-                url: s.url
-            }));
-        } else if (Array.isArray(rawData.qualityList) && rawData.qualityList.length > 0) {
-            formatList = rawData.qualityList;
-        }
-
-        // Nếu mảng vẫn rỗng, gom các thuộc tính link đơn lẻ (directPlayUrl, video, play, url, nwm_video_url)
-        const fallbackVideoUrl = rawData.directPlayUrl || rawData.video || rawData.playUrl || rawData.play || rawData.nwm_video_url || rawData.url;
-
-        if (formatList.length === 0 && fallbackVideoUrl && typeof fallbackVideoUrl === 'string') {
+        // Nếu danh sách rỗng nhưng có link directPlayUrl -> Ép tạo 1 item mặc định
+        if (formatList.length === 0 && rawData.directPlayUrl) {
             formatList.push({
-                quality: 'HD / No Watermark',
+                quality: '720p',
                 ext: 'mp4',
-                url: fallbackVideoUrl
+                url: rawData.directPlayUrl
             });
         }
 
-        const finalVideoUrl = formatList[0]?.url || fallbackVideoUrl || '';
-
-        // Chuẩn hóa tập dữ liệu phản hồi
+        // 🌟 TẠO TẬP DỮ LIỆU TƯƠNG THÍCH ĐA NĂNG
         const cleanData = {
             id: rawData.id || '',
-            title: rawData.title || 'Video Media',
-            cover: rawData.cover || rawData.thumbnail || '',
-            thumbnail: rawData.cover || rawData.thumbnail || '',
-            author: rawData.author || rawData.nickname || 'Unknown',
+            title: rawData.title || 'Video',
+            cover: rawData.cover || '',
+            thumbnail: rawData.cover || '',
+            author: rawData.author || '',
             durationSeconds: rawData.durationSeconds || 0,
             duration: rawData.durationSeconds || 0,
             viewCount: rawData.viewCount || 0,
             
-            directPlayUrl: finalVideoUrl,
-            url: finalVideoUrl,
+            // Link direct phát video
+            directPlayUrl: rawData.directPlayUrl || (formatList[0]?.url || ''),
+            url: rawData.directPlayUrl || (formatList[0]?.url || ''),
             
+            // Ảnh (dành cho album ảnh Douyin / TikTok)
             images: isImagePost ? rawData.images : [],
             
+            // Ép tất cả các biến chứa danh sách link về cùng 1 mảng
             qualityList: formatList,
             streams: formatList,
             formats: formatList,
@@ -177,18 +136,13 @@ app.post('/api/parse', parseLimiter, async (req, res) => {
             urls: formatList
         };
 
-        const responsePayload = {
+        return res.json({
             success: true,
             processTime: rawResult.processTime || '1.0s',
-            platform: rawResult.platform || (lowerUrl.includes('facebook') || lowerUrl.includes('fb.') ? 'facebook' : 'unknown'),
+            platform: rawResult.platform || 'youtube',
             type: isImagePost ? 'image' : 'video',
             data: cleanData
-        };
-
-        // 🌟 LƯU KẾT QUẢ VÀO CACHE TRƯỚC KHI TRẢ VỀ
-        apiCache.set(cacheKey, responsePayload);
-
-        return res.json(responsePayload);
+        });
 
     } catch (err) {
         console.error('❌ [PARSE ERROR DETAILS]:', err.stack || err.message || err);
@@ -200,20 +154,18 @@ app.post('/api/parse', parseLimiter, async (req, res) => {
 });
 
 // ------------------------------------------------------------------
-// 2. API DOWNLOAD / STREAM PROXY (TỐI ƯU STREAM VÀ BĂNG THÔNG)
+// 2. API DOWNLOAD / STREAM PROXY (ĐÃ FIX TẢI FILE TRỰC TIẾP 100%)
 // ------------------------------------------------------------------
 app.get('/api/download', async (req, res) => {
-    let cancelTokenSource = axios.CancelToken.source();
-
     try {
         const { url, filename } = req.query;
         if (!url) return res.status(400).send('Thiếu tham số URL');
 
         const targetUrl = decodeURIComponent(url);
 
-        // Đặt Header Referer tương ứng với từng nền tảng
+        // Đặt Header Referer cho phù hợp từng nền tảng
         let refererHeader = 'https://www.youtube.com/';
-        if (targetUrl.includes('douyin.com') || targetUrl.includes('iesdouyin.com')) {
+        if (targetUrl.includes('douyin.com')) {
             refererHeader = 'https://www.douyin.com/';
         } else if (targetUrl.includes('fbcdn.net') || targetUrl.includes('facebook.com')) {
             refererHeader = 'https://www.facebook.com/';
@@ -230,16 +182,18 @@ app.get('/api/download', async (req, res) => {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
                 'Referer': refererHeader
             },
-            timeout: 30000,
-            cancelToken: cancelTokenSource.token
+            timeout: 60000
         });
 
-        // Tên file an toàn
+        // Xác định tên tệp tin tải về
         let safeFilename = filename ? decodeURIComponent(filename) : 'download_file.mp4';
+        
+        // Loại bỏ các ký tự đặc biệt nguy hiểm khỏi tên file
         safeFilename = safeFilename.replace(/[/\\?%*:|"<>]/g, '_');
+
         const encodedFilename = encodeURIComponent(safeFilename);
 
-        // Thiết lập Headers ép tải xuống
+        // 🌟 BẮT BUỘC: Các Header này ÉP trình duyệt PHẢI TẢI XUỐNG FILE thay vì phát trực tuyến
         res.setHeader('Content-Disposition', `attachment; filename="${encodedFilename}"; filename*=UTF-8''${encodedFilename}`);
         res.setHeader('Content-Type', 'application/octet-stream');
         
@@ -247,23 +201,12 @@ app.get('/api/download', async (req, res) => {
             res.setHeader('Content-Length', response.headers['content-length']);
         }
 
-        // Hủy Request Proxy nếu người dùng đóng trình duyệt midway
-        req.on('close', () => {
-            cancelTokenSource.cancel('User aborted download.');
-        });
-
-        // Pipe dữ liệu trực tiếp tới Client
+        // Pipe dữ liệu luồng trực tiếp tới trình duyệt người dùng
         response.data.pipe(res);
 
     } catch (err) {
-        if (axios.isCancel(err)) {
-            console.log('⚠️ [DOWNLOAD]: Người dùng đã ngắt kết nối giữa chừng.');
-        } else {
-            console.error('❌ [DOWNLOAD ERROR]:', err.message);
-            if (!res.headersSent) {
-                res.status(500).send('Không thể tải tệp tin này về máy.');
-            }
-        }
+        console.error('❌ [DOWNLOAD ERROR DETAILS]:', err.message);
+        res.status(500).send('Không thể tải tệp tin này về máy.');
     }
 });
 
