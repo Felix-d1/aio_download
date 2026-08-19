@@ -1,0 +1,1178 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NEXUS DOWNLOADER - Tải Video & Album Đa Nền Tảng Siêu Tốc</title>
+    
+    <!-- Google Fonts & Font Awesome -->
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        :root {
+            --bg-dark: #07090e;
+            --card-bg: rgba(15, 23, 42, 0.75);
+            --border-color: rgba(255, 255, 255, 0.12);
+            --border-glow: rgba(56, 189, 248, 0.3);
+            --primary: #38bdf8;
+            --primary-glow: rgba(56, 189, 248, 0.4);
+            --accent-purple: #8b5cf6;
+            --accent-green: #10b981;
+            --text-main: #f8fafc;
+            --text-sub: #94a3b8;
+        }
+
+        * { 
+            box-sizing: border-box; 
+            margin: 0; 
+            padding: 0; 
+            font-family: 'Plus Jakarta Sans', sans-serif; 
+        }
+        
+        body {
+            background: var(--bg-dark);
+            color: var(--text-main);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            overflow-x: hidden;
+            position: relative;
+        }
+
+        /* Animated Background Gradients */
+        .bg-glow-1 {
+            position: fixed;
+            top: -10%;
+            left: -10%;
+            width: 50vw;
+            height: 50vw;
+            background: radial-gradient(circle, rgba(56, 189, 248, 0.15) 0%, rgba(0,0,0,0) 70%);
+            z-index: -1;
+            pointer-events: none;
+            animation: floatGlow 12s infinite alternate ease-in-out;
+        }
+
+        .bg-glow-2 {
+            position: fixed;
+            bottom: -10%;
+            right: -10%;
+            width: 55vw;
+            height: 55vw;
+            background: radial-gradient(circle, rgba(139, 92, 246, 0.15) 0%, rgba(0,0,0,0) 70%);
+            z-index: -1;
+            pointer-events: none;
+            animation: floatGlow 15s infinite alternate-reverse ease-in-out;
+        }
+
+        @keyframes floatGlow {
+            0% { transform: translate(0, 0) scale(1); }
+            50% { transform: translate(5%, 10%) scale(1.1); }
+            100% { transform: translate(-5%, -5%) scale(0.95); }
+        }
+
+        /* Toast Notification System */
+        #toastContainer {
+            position: fixed;
+            top: 24px;
+            right: 24px;
+            z-index: 9999;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .toast {
+            background: rgba(30, 41, 59, 0.95);
+            color: #fff;
+            padding: 14px 22px;
+            border-radius: 12px;
+            border-left: 4px solid var(--primary);
+            box-shadow: 0 20px 30px rgba(0,0,0,0.5);
+            backdrop-filter: blur(10px);
+            font-size: 0.92rem;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            animation: slideIn 0.35s cubic-bezier(0.16, 1, 0.3, 1), fadeOut 0.3s ease 3.2s forwards;
+        }
+        .toast.error { border-left-color: #ef4444; }
+
+        @keyframes slideIn { 
+            from { transform: translateX(120%); opacity: 0; } 
+            to { transform: translateX(0); opacity: 1; } 
+        }
+        @keyframes fadeOut { 
+            from { opacity: 1; transform: scale(1); } 
+            to { opacity: 0; transform: scale(0.9); } 
+        }
+
+        /* Header Navigation */
+        header {
+            padding: 20px 0;
+            border-bottom: 1px solid var(--border-color);
+            backdrop-filter: blur(16px);
+            position: sticky;
+            top: 0;
+            z-index: 50;
+            background: rgba(7, 9, 14, 0.7);
+        }
+
+        .nav-container {
+            max-width: 1100px;
+            margin: 0 auto;
+            padding: 0 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo {
+            font-size: 1.5rem;
+            font-weight: 800;
+            letter-spacing: -0.5px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            text-decoration: none;
+        }
+
+        .logo-icon {
+            width: 42px;
+            height: 42px;
+            background: linear-gradient(135deg, #38bdf8 0%, #8b5cf6 100%);
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #fff;
+            font-size: 1.25rem;
+            box-shadow: 0 0 20px var(--primary-glow);
+            animation: pulseGlow 3s infinite alternate;
+        }
+
+        @keyframes pulseGlow {
+            0% { box-shadow: 0 0 15px rgba(56, 189, 248, 0.4); }
+            100% { box-shadow: 0 0 25px rgba(139, 92, 246, 0.6); }
+        }
+
+        .logo-text {
+            background: linear-gradient(135deg, #f8fafc 30%, #38bdf8 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .nav-badge {
+            background: rgba(56, 189, 248, 0.1);
+            border: 1px solid var(--border-color);
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            color: var(--primary);
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            background: var(--accent-green);
+            border-radius: 50%;
+            box-shadow: 0 0 10px var(--accent-green);
+        }
+
+        /* Main Container */
+        .container {
+            max-width: 860px;
+            margin: 40px auto;
+            padding: 0 24px;
+            width: 100%;
+        }
+
+        .hero-title {
+            text-align: center;
+            margin-bottom: 35px;
+        }
+
+        .platform-pills {
+            display: inline-flex;
+            gap: 10px;
+            margin-bottom: 16px;
+            background: rgba(255, 255, 255, 0.03);
+            padding: 6px 16px;
+            border-radius: 30px;
+            border: 1px solid var(--border-color);
+        }
+
+        .pill-item {
+            font-size: 0.85rem;
+            color: var(--text-sub);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-weight: 500;
+        }
+
+        .pill-item i { font-size: 0.95rem; }
+
+        .hero-title h1 {
+            font-size: 2.5rem;
+            font-weight: 800;
+            line-height: 1.25;
+            margin-bottom: 14px;
+            letter-spacing: -1px;
+        }
+
+        .hero-title h1 span {
+            background: linear-gradient(135deg, #38bdf8 0%, #8b5cf6 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .hero-title p {
+            color: var(--text-sub);
+            font-size: 1.05rem;
+        }
+
+        /* Search Input Box */
+        .search-box-wrapper {
+            position: relative;
+            margin-bottom: 24px;
+        }
+
+        .search-box {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            padding: 8px 8px 8px 18px;
+            border-radius: 20px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            backdrop-filter: blur(16px);
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.6);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .search-box:focus-within {
+            border-color: var(--primary);
+            box-shadow: 0 0 30px var(--primary-glow);
+            transform: translateY(-2px);
+        }
+
+        .search-input-group {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .search-input-group i {
+            color: var(--primary);
+            font-size: 1.2rem;
+        }
+
+        .search-input-group input {
+            width: 100%;
+            background: transparent;
+            border: none;
+            outline: none;
+            color: var(--text-main);
+            font-size: 1rem;
+            font-weight: 500;
+        }
+
+        .search-input-group input::placeholder {
+            color: #64748b;
+        }
+
+        .action-btns-group {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .btn-action-icon {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--border-color);
+            color: var(--text-sub);
+            cursor: pointer;
+            width: 38px;
+            height: 38px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+        }
+
+        .btn-action-icon:hover {
+            color: #fff;
+            background: rgba(255, 255, 255, 0.15);
+            border-color: var(--primary);
+        }
+
+        .btn-submit {
+            background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);
+            color: #fff;
+            border: none;
+            padding: 14px 28px;
+            border-radius: 14px;
+            font-weight: 700;
+            font-size: 0.98rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            white-space: nowrap;
+            box-shadow: 0 4px 15px rgba(2, 132, 199, 0.3);
+        }
+
+        .btn-submit:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(2, 132, 199, 0.5);
+        }
+
+        .btn-submit:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        /* Quick History Bar */
+        .history-section {
+            margin-top: -10px;
+            margin-bottom: 25px;
+            display: none;
+        }
+
+        .history-title {
+            font-size: 0.8rem;
+            color: var(--text-sub);
+            margin-bottom: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .history-clear-btn {
+            background: none;
+            border: none;
+            color: #ef4444;
+            font-size: 0.75rem;
+            cursor: pointer;
+        }
+
+        .history-chips {
+            display: flex;
+            gap: 8px;
+            overflow-x: auto;
+            padding-bottom: 6px;
+        }
+
+        .history-chips::-webkit-scrollbar { height: 4px; }
+        .history-chips::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 4px; }
+
+        .chip-item {
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid var(--border-color);
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            color: var(--text-sub);
+            cursor: pointer;
+            white-space: nowrap;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .chip-item:hover {
+            border-color: var(--primary);
+            color: var(--text-main);
+            background: rgba(56, 189, 248, 0.1);
+        }
+
+        /* Loading State Animation */
+        .loading-state {
+            display: none;
+            text-align: center;
+            padding: 45px 0;
+        }
+
+        .spinner-glow {
+            position: relative;
+            width: 55px;
+            height: 55px;
+            margin: 0 auto 20px;
+        }
+
+        .spinner {
+            width: 100%;
+            height: 100%;
+            border: 3px solid rgba(56, 189, 248, 0.15);
+            border-top: 3px solid var(--primary);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        /* Result Display Card */
+        .result-card {
+            display: none;
+            margin-top: 20px;
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 24px;
+            padding: 28px;
+            backdrop-filter: blur(16px);
+            box-shadow: 0 30px 60px rgba(0,0,0,0.4);
+            animation: cardAppear 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        @keyframes cardAppear { 
+            from { opacity: 0; transform: translateY(20px) scale(0.98); } 
+            to { opacity: 1; transform: translateY(0) scale(1); } 
+        }
+
+        .result-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 14px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .platform-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: 700;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--border-color);
+            text-transform: uppercase;
+        }
+
+        .platform-badge.youtube { color: #ff0000; border-color: rgba(255,0,0,0.3); }
+        .platform-badge.facebook { color: #1877f2; border-color: rgba(24,119,242,0.3); }
+        .platform-badge.tiktok { color: #25f4ee; border-color: rgba(37,244,238,0.3); }
+        .platform-badge.douyin { color: #fe2c55; border-color: rgba(254,44,85,0.3); }
+
+        .result-body {
+            display: flex;
+            gap: 24px;
+        }
+
+        .media-preview-container {
+            width: 180px;
+            height: 240px;
+            position: relative;
+            flex-shrink: 0;
+            border-radius: 16px;
+            overflow: hidden;
+            border: 1px solid var(--border-color);
+            box-shadow: 0 10px 20px rgba(0,0,0,0.3);
+            background: rgba(0, 0, 0, 0.2);
+        }
+
+        .media-preview {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transition: transform 0.3s ease;
+        }
+
+        .media-preview-container:hover .media-preview {
+            transform: scale(1.05);
+        }
+
+        .media-info {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+
+        .media-title {
+            font-size: 1.1rem;
+            font-weight: 700;
+            line-height: 1.5;
+            color: var(--text-main);
+            display: -webkit-box;
+            -webkit-line-clamp: 3;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+            margin-bottom: 10px;
+        }
+
+        .media-author {
+            font-size: 0.9rem;
+            color: var(--primary);
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 20px;
+        }
+
+        /* Quality Download Options */
+        .quality-options-group {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+
+        .quality-label {
+            font-size: 0.82rem;
+            font-weight: 700;
+            color: var(--text-sub);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .btn-dl {
+            text-decoration: none;
+            padding: 12px 18px;
+            border-radius: 12px;
+            font-weight: 700;
+            font-size: 0.9rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+            cursor: pointer;
+        }
+
+        .btn-video-hd {
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            color: #fff;
+            box-shadow: 0 4px 15px rgba(16, 185, 129, 0.25);
+        }
+
+        .btn-video-hd:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(16, 185, 129, 0.4);
+        }
+
+        .btn-video-sd {
+            background: rgba(56, 189, 248, 0.12);
+            border: 1px solid var(--primary);
+            color: var(--primary);
+        }
+
+        .btn-video-sd:hover {
+            background: var(--primary);
+            color: #000;
+            transform: translateY(-2px);
+        }
+
+        .btn-audio {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--border-color);
+            color: var(--text-main);
+        }
+
+        .btn-audio:hover {
+            background: rgba(255, 255, 255, 0.12);
+            transform: translateY(-2px);
+        }
+
+        .quality-badge {
+            font-size: 0.72rem;
+            padding: 3px 8px;
+            border-radius: 6px;
+            background: rgba(0,0,0,0.35);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        /* Gallery Container */
+        #galleryContainer {
+            margin-top: 25px;
+            padding-top: 20px;
+            border-top: 1px solid var(--border-color);
+        }
+
+        .gallery-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+
+        .gallery-title {
+            font-size: 1rem;
+            font-weight: 700;
+            color: var(--primary);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn-download-all {
+            background: rgba(56, 189, 248, 0.15);
+            color: var(--primary);
+            border: 1px solid var(--primary);
+            padding: 8px 18px;
+            border-radius: 10px;
+            font-size: 0.85rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn-download-all:hover {
+            background: var(--primary);
+            color: #000;
+            box-shadow: 0 4px 15px var(--primary-glow);
+        }
+
+        .gallery-grid-wrapper {
+            max-height: 400px;
+            overflow-y: auto;
+            padding-right: 6px;
+        }
+
+        .gallery-grid-wrapper::-webkit-scrollbar { width: 6px; }
+        .gallery-grid-wrapper::-webkit-scrollbar-track { background: rgba(255, 255, 255, 0.03); border-radius: 10px; }
+        .gallery-grid-wrapper::-webkit-scrollbar-thumb { background: var(--primary); border-radius: 10px; }
+
+        .gallery-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(135px, 1fr));
+            gap: 14px;
+        }
+
+        .gallery-item {
+            position: relative;
+            border-radius: 12px;
+            overflow: hidden;
+            aspect-ratio: 1;
+            border: 1px solid var(--border-color);
+            background: rgba(0,0,0,0.3);
+            transition: transform 0.25s ease, border-color 0.25s ease;
+        }
+
+        .gallery-item:hover {
+            transform: scale(1.04);
+            border-color: var(--primary);
+        }
+
+        .gallery-item img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .gallery-item .img-overlay {
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(to top, rgba(0,0,0,0.85) 0%, transparent 60%);
+            display: flex;
+            align-items: flex-end;
+            justify-content: space-between;
+            padding: 10px;
+            opacity: 0.9;
+        }
+
+        .gallery-item .img-num {
+            font-size: 0.75rem;
+            color: #cbd5e1;
+            font-weight: 600;
+        }
+
+        .gallery-item a.btn-img-dl {
+            background: var(--primary);
+            color: #000;
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-decoration: none;
+            font-size: 0.85rem;
+            font-weight: bold;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+            transition: transform 0.2s;
+        }
+
+        .gallery-item a.btn-img-dl:hover {
+            transform: scale(1.15);
+        }
+
+        .meta-tag {
+            font-size: 0.8rem;
+            color: var(--text-sub);
+            margin-top: 20px;
+            text-align: right;
+            display: flex;
+            justify-content: flex-end;
+            align-items: center;
+            gap: 6px;
+        }
+
+        /* Footer */
+        footer {
+            text-align: center;
+            padding: 35px 20px;
+            color: var(--text-sub);
+            font-size: 0.88rem;
+            border-top: 1px solid var(--border-color);
+            background: rgba(7, 9, 14, 0.8);
+            margin-top: 60px;
+        }
+
+        footer strong {
+            color: var(--text-main);
+        }
+
+        /* Responsive Breakpoints */
+        @media (max-width: 640px) {
+            .hero-title h1 { font-size: 1.8rem; }
+            .platform-pills { flex-wrap: wrap; justify-content: center; }
+            .search-box { flex-direction: column; padding: 12px; }
+            .search-input-group { width: 100%; }
+            .action-btns-group { width: 100%; justify-content: flex-end; }
+            .btn-submit { width: 100%; justify-content: center; padding: 12px; }
+            .result-body { flex-direction: column; }
+            .media-preview-container { width: 100%; height: 220px; }
+            .gallery-grid { grid-template-columns: repeat(auto-fill, minmax(105px, 1fr)); }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Background Animated Effects -->
+    <div class="bg-glow-1"></div>
+    <div class="bg-glow-2"></div>
+
+    <!-- Container cho Toast Alerts -->
+    <div id="toastContainer"></div>
+
+    <!-- Header Navigation -->
+    <header>
+        <div class="nav-container">
+            <a href="#" class="logo">
+                <div class="logo-icon">
+                    <i class="fa-solid fa-bolt-lightning"></i>
+                </div>
+                <span class="logo-text">NEXUS DOWNLOADER</span>
+            </a>
+            <div class="nav-badge">
+                <span class="status-dot"></span>
+                <span>Engine v4.0 Active</span>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="container">
+        <div class="hero-title">
+            <div class="platform-pills">
+                <div class="pill-item"><i class="fa-brands fa-youtube" style="color: #ff0000;"></i> YouTube</div>
+                <div class="pill-item"><i class="fa-brands fa-tiktok" style="color: #25f4ee;"></i> TikTok</div>
+                <div class="pill-item"><i class="fa-solid fa-video" style="color: #fe2c55;"></i> Douyin</div>
+                <div class="pill-item"><i class="fa-brands fa-facebook" style="color: #1877f2;"></i> Facebook</div>
+            </div>
+            <h1>Tải Video & Album Ảnh <br><span>Đa Nền Tảng Siêu Tốc</span></h1>
+            <p>Tự động nhận diện - Bóc tách Video 1080p Full HD, Nhạc MP3 & Album Ảnh không logo</p>
+        </div>
+
+        <!-- Search Input Card -->
+        <div class="search-box-wrapper">
+            <div class="search-box">
+                <div class="search-input-group">
+                    <i class="fa-solid fa-link"></i>
+                    <input type="text" id="urlInput" placeholder="Dán liên kết YouTube, TikTok, Douyin hoặc Facebook vào đây..." autocomplete="off">
+                </div>
+                <div class="action-btns-group">
+                    <button class="btn-action-icon" id="btnClear" title="Xóa văn bản" style="display: none;" onclick="clearInput()">
+                        <i class="fa-solid fa-xmark"></i>
+                    </button>
+                    <button class="btn-action-icon" id="btnPaste" title="Dán nhanh từ Clipboard" onclick="pasteFromClipboard()">
+                        <i class="fa-regular fa-paste"></i>
+                    </button>
+                </div>
+                <button class="btn-submit" id="btnParse" onclick="processDownload()">
+                    <i class="fa-solid fa-wand-magic-sparkles"></i>
+                    <span>BÓC LINK</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Lịch sử tìm kiếm nhanh -->
+        <div class="history-section" id="historySection">
+            <div class="history-title">
+                <span><i class="fa-solid fa-clock-rotate-left"></i> Lịch sử bóc link gần đây</span>
+                <button class="history-clear-btn" onclick="clearHistory()"><i class="fa-solid fa-trash"></i> Xóa</button>
+            </div>
+            <div class="history-chips" id="historyChips"></div>
+        </div>
+
+        <!-- Loading State Spinner -->
+        <div class="loading-state" id="loadingState">
+            <div class="spinner-glow">
+                <div class="spinner"></div>
+            </div>
+            <p style="color: var(--text-sub); font-size: 0.95rem; font-weight: 500;">Đang bóc tách luồng CDN, chất lượng Video & Album ảnh...</p>
+        </div>
+
+        <!-- Result Display Card -->
+        <div class="result-card" id="resultCard">
+            <!-- Header Result Badge -->
+            <div class="result-header">
+                <div class="platform-badge" id="platformBadge">
+                    <i class="fa-solid fa-globe"></i> <span id="platformText">Nền tảng</span>
+                </div>
+                <div style="font-size: 0.82rem; color: var(--text-sub);" id="mediaTypeBadge">
+                    <i class="fa-solid fa-film"></i> Video Format
+                </div>
+            </div>
+
+            <!-- Khung hiển thị thông tin & Tải Video -->
+            <div class="result-body" id="singleMediaBlock">
+                <div class="media-preview-container">
+                    <img src="" id="resCover" class="media-preview" alt="Media Preview">
+                </div>
+                
+                <div class="media-info">
+                    <div>
+                        <div class="media-title" id="resTitle">Tiêu đề nội dung</div>
+                        <div class="media-author" id="resAuthor"><i class="fa-solid fa-circle-user"></i> @tacgia</div>
+                    </div>
+                    
+                    <!-- Danh sách nút tải theo từng Chất lượng (HD / SD / Audio) -->
+                    <div class="quality-options-group" id="videoQualityGroup">
+                        <div class="quality-label"><i class="fa-solid fa-sliders"></i> Tùy chọn tải về:</div>
+                        
+                        <a href="#" id="btnVideoHD" class="btn-dl btn-video-hd" target="_blank" style="display: none;">
+                            <span><i class="fa-solid fa-circle-check"></i> Tải Video FULL HD (1080p)</span>
+                            <span class="quality-badge" id="hdQualityLabel">HD / MP4</span>
+                        </a>
+                        
+                        <a href="#" id="btnVideoSD" class="btn-dl btn-video-sd" target="_blank" style="display: none;">
+                            <span><i class="fa-solid fa-download"></i> Tải Video Tiết Kiệm Dung Lượng (SD)</span>
+                            <span class="quality-badge" id="sdQualityLabel">SD / 480p</span>
+                        </a>
+                        
+                        <a href="#" id="btnAudio" class="btn-dl btn-audio" target="_blank" style="display: none;">
+                            <span><i class="fa-solid fa-music"></i> Tải Nhạc Nền (Audio MP3)</span>
+                            <span class="quality-badge">AUDIO</span>
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Khung gôm nhóm Album ảnh -->
+            <div id="galleryContainer" style="display: none;">
+                <div class="gallery-header">
+                    <div class="gallery-title">
+                        <i class="fa-solid fa-images"></i> 
+                        <span>Bộ Ảnh Đi Kèm (<span id="imgCount">0</span> ảnh gôm nhóm)</span>
+                    </div>
+                    <button class="btn-download-all" onclick="downloadAllImages()">
+                        <i class="fa-solid fa-file-arrow-down"></i> Tải tất cả ảnh
+                    </button>
+                </div>
+                
+                <!-- Thanh cuộn gôm nhóm ảnh -->
+                <div class="gallery-grid-wrapper">
+                    <div class="gallery-grid" id="galleryGrid"></div>
+                </div>
+            </div>
+
+            <div class="meta-tag">
+                <i class="fa-solid fa-bolt"></i> Thời gian bóc tách: <span id="procTime" style="color: var(--primary); font-weight: 700;">0.0s</span>
+            </div>
+        </div>
+    </main>
+
+    <!-- Footer Copyright -->
+    <footer>
+        <p>© 2026 <strong>NEXUS DOWNLOADER ENGINE</strong>. Powered by Phan Duy Chấn Copyright.</p>
+    </footer>
+
+    <!-- Client Logic Script -->
+    <script>
+        const urlInput = document.getElementById('urlInput');
+        const btnClear = document.getElementById('btnClear');
+        const btnParse = document.getElementById('btnParse');
+        const loadingState = document.getElementById('loadingState');
+        const resultCard = document.getElementById('resultCard');
+        
+        let currentImageArray = [];
+        let searchHistory = JSON.parse(localStorage.getItem('nexus_history') || '[]');
+
+        // Initialize App
+        document.addEventListener('DOMContentLoaded', () => {
+            renderHistory();
+        });
+
+        // Toggle Clear Input Button
+        urlInput.addEventListener('input', () => {
+            btnClear.style.display = urlInput.value.trim() ? 'flex' : 'none';
+        });
+
+        // Keypress enter to trigger parse
+        urlInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') processDownload();
+        });
+
+        function clearInput() {
+            urlInput.value = '';
+            btnClear.style.display = 'none';
+            urlInput.focus();
+        }
+
+        // Paste Link Clipboard
+        async function pasteFromClipboard() {
+            try {
+                const text = await navigator.clipboard.readText();
+                if (text) {
+                    urlInput.value = text;
+                    btnClear.style.display = 'flex';
+                    showToast('Đã dán liên kết từ bộ nhớ tạm!');
+                }
+            } catch (err) {
+                showToast('Không thể dán tự động, hãy bấm Ctrl+V!', true);
+            }
+        }
+
+        // Custom Toast System
+        function showToast(message, isError = false) {
+            const container = document.getElementById('toastContainer');
+            const toast = document.createElement('div');
+            toast.className = `toast ${isError ? 'error' : ''}`;
+            toast.innerHTML = `<i class="fa-solid ${isError ? 'fa-circle-exclamation' : 'fa-circle-check'}"></i> ${message}`;
+            container.appendChild(toast);
+            setTimeout(() => toast.remove(), 3500);
+        }
+
+        // Render History Chips
+        function renderHistory() {
+            const historySection = document.getElementById('historySection');
+            const historyChips = document.getElementById('historyChips');
+
+            if (searchHistory.length === 0) {
+                historySection.style.display = 'none';
+                return;
+            }
+
+            historySection.style.display = 'block';
+            historyChips.innerHTML = '';
+
+            searchHistory.slice(0, 5).forEach(item => {
+                const chip = document.createElement('div');
+                chip.className = 'chip-item';
+                chip.innerHTML = `<i class="${getPlatformIcon(item.platform)}"></i> ${item.title.length > 25 ? item.title.substring(0, 25) + '...' : item.title}`;
+                chip.onclick = () => {
+                    urlInput.value = item.url;
+                    btnClear.style.display = 'flex';
+                    processDownload();
+                };
+                historyChips.appendChild(chip);
+            });
+        }
+
+        function clearHistory() {
+            searchHistory = [];
+            localStorage.removeItem('nexus_history');
+            renderHistory();
+            showToast('Đã xóa lịch sử tìm kiếm!');
+        }
+
+        function saveToHistory(title, url, platform) {
+            searchHistory = searchHistory.filter(item => item.url !== url);
+            searchHistory.unshift({ title, url, platform });
+            if (searchHistory.length > 10) searchHistory.pop();
+            localStorage.setItem('nexus_history', JSON.stringify(searchHistory));
+            renderHistory();
+        }
+
+        function detectPlatform(url) {
+            if (url.includes('youtube.com') || url.includes('youtu.be')) return 'youtube';
+            if (url.includes('tiktok.com')) return 'tiktok';
+            if (url.includes('douyin.com')) return 'douyin';
+            if (url.includes('facebook.com') || url.includes('fb.watch')) return 'facebook';
+            return 'unknown';
+        }
+
+        function getPlatformIcon(platform) {
+            switch(platform) {
+                case 'youtube': return 'fa-brands fa-youtube';
+                case 'tiktok': return 'fa-brands fa-tiktok';
+                case 'douyin': return 'fa-solid fa-video';
+                case 'facebook': return 'fa-brands fa-facebook';
+                default: return 'fa-solid fa-globe';
+            }
+        }
+
+        // --- CORE PROCESS DOWNLOAD FUNCTION (KẾT NỐI BACKEND NODEJS) ---
+        async function processDownload() {
+            const url = urlInput.value.trim();
+            if (!url) {
+                showToast('Vui lòng nhập liên kết video hoặc album!', true);
+                return;
+            }
+
+            // Bat trang thai UI Loading
+            btnParse.disabled = true;
+            loadingState.style.display = 'block';
+            resultCard.style.display = 'none';
+
+            try {
+                // Gọi API backend NodeJS
+                const response = await fetch('/api/parse', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url: url })
+                });
+
+                const result = await response.json();
+
+                if (!result.success) {
+                    throw new Error(result.error || 'Bóc tách dữ liệu thất bại từ máy chủ!');
+                }
+
+                // Hiển thị dữ liệu thu được
+                displayResult(result.data, result.platform || detectPlatform(url), result.processTime || '1.0s');
+                saveToHistory(result.data.title || 'Media Video', url, result.platform || detectPlatform(url));
+                showToast('Bóc tách dữ liệu thành công!');
+
+            } catch (err) {
+                console.error("Parse Error Details:", err);
+                showToast(err.message || 'Không thể bóc tách liên kết này. Vui lòng thử lại!', true);
+            } finally {
+                btnParse.disabled = false;
+                loadingState.style.display = 'none';
+            }
+        }
+
+        // --- HÀM HÓA RENDER DỮ LIỆU ---
+        function displayResult(data, platform, procTime) {
+            document.getElementById('procTime').innerText = procTime;
+            
+            // Platform Badge
+            const pBadge = document.getElementById('platformBadge');
+            const pText = document.getElementById('platformText');
+            pBadge.className = `platform-badge ${platform}`;
+            pText.innerHTML = `<i class="${getPlatformIcon(platform)}"></i> ${platform.toUpperCase()}`;
+
+            // Common Info
+            document.getElementById('resTitle').innerText = data.title || 'Video Nội Dung';
+            document.getElementById('resAuthor').innerHTML = `<i class="fa-solid fa-circle-user"></i> ${data.author || 'Tác giả'}`;
+            
+            // Cover Preview Image
+            const coverUrl = data.cover || data.thumbnail || 'https://via.placeholder.com/400x600?text=No+Cover';
+            document.getElementById('resCover').src = coverUrl;
+
+            // Media Type Badge Text
+            const mediaTypeBadge = document.getElementById('mediaTypeBadge');
+            if (data.images && data.images.length > 0) {
+                mediaTypeBadge.innerHTML = `<i class="fa-solid fa-images"></i> Image Album`;
+            } else {
+                mediaTypeBadge.innerHTML = `<i class="fa-solid fa-film"></i> Video Stream`;
+            }
+
+            // Video Action Buttons
+            const btnHD = document.getElementById('btnVideoHD');
+            const btnSD = document.getElementById('btnVideoSD');
+            const btnAudio = document.getElementById('btnAudio');
+            const hdQualityLabel = document.getElementById('hdQualityLabel');
+            const sdQualityLabel = document.getElementById('sdQualityLabel');
+
+            // Reset buttons
+            btnHD.style.display = 'none';
+            btnSD.style.display = 'none';
+            btnAudio.style.display = 'none';
+
+            // Tìm luồng video từ các thuộc tính mảng tương thích Backend
+            const formats = data.qualityList || data.formats || data.streams || [];
+            const directUrl = data.directPlayUrl || data.url;
+
+            if (formats.length > 0) {
+                // Ưu tiên lấy format chất lượng cao nhất
+                const mainFormat = formats[0];
+                btnHD.href = `/api/download?url=${encodeURIComponent(mainFormat.url)}&filename=${encodeURIComponent((data.title || 'video') + '.mp4')}`;
+                hdQualityLabel.innerText = `${mainFormat.quality || 'HD'} / ${mainFormat.ext || 'MP4'}`;
+                btnHD.style.display = 'flex';
+
+                // Nếu có luồng format thứ 2
+                if (formats.length > 1) {
+                    const subFormat = formats[1];
+                    btnSD.href = `/api/download?url=${encodeURIComponent(subFormat.url)}&filename=${encodeURIComponent((data.title || 'video') + '_sd.mp4')}`;
+                    sdQualityLabel.innerText = `${subFormat.quality || 'SD'} / ${subFormat.ext || 'MP4'}`;
+                    btnSD.style.display = 'flex';
+                }
+            } else if (directUrl) {
+                // Trường hợp chỉ có 1 Direct URL duy nhất
+                btnHD.href = `/api/download?url=${encodeURIComponent(directUrl)}&filename=${encodeURIComponent((data.title || 'video') + '.mp4')}`;
+                hdQualityLabel.innerText = `HD / MP4`;
+                btnHD.style.display = 'flex';
+            }
+
+            // Gallery / Photos Setup (Bài viết dạng Album)
+            const galleryContainer = document.getElementById('galleryContainer');
+            const galleryGrid = document.getElementById('galleryGrid');
+            const imgCount = document.getElementById('imgCount');
+
+            if (data.images && Array.isArray(data.images) && data.images.length > 0) {
+                currentImageArray = data.images;
+                imgCount.innerText = data.images.length;
+                galleryGrid.innerHTML = '';
+
+                data.images.forEach((imgUrl, index) => {
+                    const downloadProxyUrl = `/api/download?url=${encodeURIComponent(imgUrl)}&filename=image_${index + 1}.jpg`;
+                    const item = document.createElement('div');
+                    item.className = 'gallery-item';
+                    item.innerHTML = `
+                        <img src="${imgUrl}" alt="Photo ${index + 1}" loading="lazy">
+                        <div class="img-overlay">
+                            <span class="img-num">#${index + 1}</span>
+                            <a href="${downloadProxyUrl}" class="btn-img-dl" title="Tải ảnh này"><i class="fa-solid fa-download"></i></a>
+                        </div>
+                    `;
+                    galleryGrid.appendChild(item);
+                });
+                galleryContainer.style.display = 'block';
+            } else {
+                currentImageArray = [];
+                galleryContainer.style.display = 'none';
+            }
+
+            // Hiển thị thẻ kết quả
+            resultCard.style.display = 'block';
+        }
+
+        // Tải toàn bộ ảnh qua proxy Backend
+        function downloadAllImages() {
+            if (!currentImageArray.length) return;
+            showToast(`Đang mở tải ${currentImageArray.length} ảnh...`);
+            currentImageArray.forEach((imgUrl, idx) => {
+                const proxyUrl = `/api/download?url=${encodeURIComponent(imgUrl)}&filename=image_${idx + 1}.jpg`;
+                window.open(proxyUrl, '_blank');
+            });
+        }
+    </script>
+</body>
+</html>
