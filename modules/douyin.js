@@ -1,63 +1,105 @@
 import axios from 'axios';
 
-// Hàm bóc link Douyin nhận vào Browser instance & shareUrl
 export async function parseDouyin(browser, shareUrl) {
     const startTime = Date.now();
-    let fetchPage = null;
+    let page = null;
 
-    const urlMatch = shareUrl.match(/https?:\/\/[a-zA-Z0-9\-]+\.douyin\.com\/[^\s"]+/);
-    if (!urlMatch) throw new Error('Không tìm thấy URL Douyin hợp lệ!');
+    try {
+        // 1. Trích xuất URL từ chuỗi chia sẻ
+        const urlMatch = shareUrl.match(/https?:\/\/[a-zA-Z0-9\-]+\.douyin\.com\/[^\s"]+/);
+        if (!urlMatch) throw new Error('Không tìm thấy URL Douyin hợp lệ!');
 
-    // 1. Giải mã URL lấy Video ID
-    const redirectRes = await axios.get(urlMatch[0], {
-        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
-        maxRedirects: 5,
-        timeout: 5000
-    });
+        // 2. Lấy URL cuối cùng sau redirect để trích xuất Video ID
+        const redirectRes = await axios.get(urlMatch[0], {
+            headers: { 
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36' 
+            },
+            maxRedirects: 5,
+            timeout: 8000
+        });
 
-    const finalUrl = redirectRes.request.res.responseUrl || redirectRes.config.url;
-    const itemId = (finalUrl.match(/video\/(\d+)/) || finalUrl.match(/modal_id=(\d+)/))?.[1];
+        const finalUrl = redirectRes.request?.res?.responseUrl || redirectRes.config.url;
+        const itemId = (finalUrl.match(/video\/(\d+)/) || finalUrl.match(/modal_id=(\d+)/))?.[1];
 
-    if (!itemId) throw new Error('Không bóc tách được Video ID!');
+        if (!itemId) throw new Error('Không bóc tách được Video ID!');
 
-    // 2. Mở isolated tab qua robots.txt để bóc luồng CDN
-    fetchPage = await browser.newPage();
-    await fetchPage.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
-    await fetchPage.goto('https://www.douyin.com/robots.txt', { waitUntil: 'domcontentloaded', timeout: 5000 }).catch(() => {});
+        // 3. Mở tab Puppeteer và thiết lập Cookie/Headers giả lập người dùng thật
+        page = await browser.newPage();
+        
+        await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36');
+        await page.setExtraHTTPHeaders({
+            'accept-language': 'zh-CN,zh;q=0.9,en;q=0.8',
+        });
 
-    const resultData = await fetchPage.evaluate(async (vId) => {
-        try {
-            const apiUrl = `https://www.douyin.com/aweme/v1/web/aweme/detail/?aweme_id=${vId}&device_platform=webapp&aid=6383`;
-            const r = await fetch(apiUrl, { method: 'GET', credentials: 'include' });
-            const data = await r.json();
-            const detail = data?.aweme_detail;
-            if (!detail) return null;
+        // Set sẵn cookie cơ bản để tránh bị Douyin chặn ở Request đầu tiên
+        await page.setCookie({
+            name: 'ttwid',
+            value: '1%7C1b2c3d4e5f...', // Puppeteer sẽ tự khởi tạo ttwid khi truy cập
+            domain: '.douyin.com'
+        }).catch(() => {});
 
-            const urlList = detail.video?.play_addr?.url_list || [];
-            const cdnUrl = urlList.find(u => u.includes('zjcdn.com')) || urlList[0];
+        // Điều hướng đến trang gốc để kích hoạt Session
+        await page.goto(`https://www.douyin.com/video/${itemId}`, { 
+            waitUntil: 'domcontentloaded', 
+            timeout: 10000 
+        }).catch(() => {});
 
-            return {
-                id: vId,
-                title: detail.desc || 'Video Douyin',
-                cover: detail.video?.cover?.url_list?.[0] || detail.video?.origin_cover?.url_list?.[0],
-                author: detail.author?.nickname || 'Khách',
-                videoUrl: cdnUrl ? cdnUrl.replace('playwm', 'play') : null,
-                musicUrl: detail.music?.play_url?.url_list?.[0] || null
-            };
-        } catch (e) {
-            return null;
+        // 4. Hàm thực thi bóc tách (Có cơ chế Retry 3 lần nếu lần đầu bị hụt)
+        let resultData = null;
+        let retries = 3;
+
+        while (retries > 0 && !resultData) {
+            resultData = await page.evaluate(async (vId) => {
+                try {
+                    const apiUrl = `https://www.douyin.com/aweme/v1/web/aweme/detail/?aweme_id=${vId}&device_platform=webapp&aid=6383`;
+                    const response = await fetch(apiUrl, { 
+                        method: 'GET', 
+                        credentials: 'include',
+                        headers: { 'Accept': 'application/json' }
+                    });
+                    
+                    const data = await response.json();
+                    const detail = data?.aweme_detail;
+                    if (!detail) return null;
+
+                    // Ưu tiên lấy link từ play_addr hoặc bit_rate
+                    const urlList = detail.video?.play_addr?.url_list || detail.video?.bit_rate?.[0]?.play_addr?.url_list || [];
+                    let videoUrl = urlList.find(u => u.includes('zjcdn.com')) || urlList[0] || null;
+
+                    if (videoUrl) {
+                        videoUrl = videoUrl.replace('playwm', 'play').replace(/^http:/, 'https:');
+                    }
+
+                    return {
+                        id: vId,
+                        title: detail.desc || 'Video Douyin',
+                        cover: detail.video?.cover?.url_list?.[0] || detail.video?.origin_cover?.url_list?.[0] || null,
+                        author: detail.author?.nickname || 'Khách',
+                        videoUrl: videoUrl,
+                        musicUrl: detail.music?.play_url?.url_list?.[0] || null
+                    };
+                } catch (e) {
+                    return null;
+                }
+            }, itemId);
+
+            if (!resultData) {
+                retries--;
+                if (retries > 0) await new Promise(res => setTimeout(res, 1000)); // Nghỉ 1s rồi thử lại
+            }
         }
-    }, itemId);
 
-    await fetchPage.close();
+        if (!resultData || !resultData.videoUrl) {
+            throw new Error('Không bóc được luồng Video CDN từ trang!');
+        }
 
-    if (!resultData || !resultData.videoUrl) {
-        throw new Error('Không bóc được luồng Video CDN từ trang!');
+        return {
+            processTime: `${((Date.now() - startTime) / 1000).toFixed(2)}s`,
+            platform: 'douyin',
+            data: resultData
+        };
+
+    } finally {
+        if (page) await page.close().catch(() => {});
     }
-
-    return {
-        processTime: `${((Date.now() - startTime) / 1000).toFixed(2)}s`,
-        platform: 'douyin',
-        data: resultData
-    };
 }
